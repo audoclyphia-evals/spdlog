@@ -1,0 +1,123 @@
+---
+config:
+  layout: elk
+---
+classDiagram
+    direction TB
+
+    namespace sinks {
+        class sink {
+            <<Interface>>
+            +log(msg: log_msg): void
+            +flush(): void
+            +set_pattern(pattern: string): void
+            +set_formatter(formatter: unique_ptr): void
+        }
+        class rotating_file_sink {
+            +rotating_file_sink(filename, max_size, max_files)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class daily_file_sink {
+            +daily_file_sink(filename, rotation_hour, rotation_minute)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class stdout_sink_base {
+            <<Abstract>>
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class syslog_sink {
+            +syslog_sink(ident, option, facility)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class tcp_sink {
+            +tcp_sink(host, port)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class udp_sink {
+            +udp_sink(host, port)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class kafka_sink {
+            +kafka_sink(topic, config)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class ostream_sink {
+            +ostream_sink(stream)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class systemd_sink {
+            +systemd_sink()
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+    }
+
+    namespace async {
+        class async_logger {
+            +async_logger(name, sink, tp)
+            +log(msg: log_msg): void
+            +flush(): void
+        }
+        class thread_pool {
+            +thread_pool(q_size, thread_count)
+            +post_log(msg): void
+            +post_flush(worker): void
+        }
+        class async_factory_impl {
+            +create(logger_name, sink_args): shared_ptr
+        }
+    }
+
+    namespace core {
+        class logger {
+            <<Abstract>>
+            +log(level, msg): void
+            +flush(): void
+            +set_level(level): void
+            +sinks(): vector~sink_ptr~
+        }
+        class registry {
+            +instance(): registry
+            +create(logger_name): shared_ptr
+            +get(logger_name): shared_ptr
+            +set_default_logger(logger): void
+        }
+        class file_event_handlers {
+            +before_open: function
+            +after_open: function
+            +before_close: function
+            +after_close: function
+        }
+    }
+
+    rotating_file_sink ..|> sink : implements
+    daily_file_sink ..|> sink : implements
+    stdout_sink_base ..|> sink : implements
+    syslog_sink ..|> sink : implements
+    tcp_sink ..|> sink : implements
+    udp_sink ..|> sink : implements
+    kafka_sink ..|> sink : implements
+    ostream_sink ..|> sink : implements
+    systemd_sink ..|> sink : implements
+
+    async_logger --> thread_pool : uses
+    async_factory_impl --> async_logger : creates
+
+    logger --> sink : has > 1
+
+    registry --> logger : manages
+
+    async_logger --|> logger : extends
+
+    rotating_file_sink --> file_event_handlers : may use
+    daily_file_sink --> file_event_handlers : may use
+
+    async_factory_impl --> thread_pool : uses

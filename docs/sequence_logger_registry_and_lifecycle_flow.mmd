@@ -1,0 +1,63 @@
+sequenceDiagram
+    autonumber
+    %% Participants grounded in context #3
+    box "User Code"
+        actor User
+    end
+    box "spdlog API"
+        participant spdlog as "spdlog namespace"
+    end
+    box "Core Registry"
+        participant Registry as "details::registry"
+        participant Logger as "Logger instance"
+    end
+    box "Internal Resources"
+        participant PeriodicFlusher
+        participant ThreadPool
+    end
+
+    %% 1. Configure automatic registration
+    User->>spdlog: set_automatic_registration(false)
+    spdlog->>+Registry: set_automatic_registration(false)
+    Registry->>Registry: lock logger_map_mutex_
+    Registry-->>-spdlog: 
+
+    %% 2. Register a logger
+    User->>spdlog: register_logger(logger)
+    spdlog->>+Registry: register_logger(logger)
+    Registry->>Registry: lock logger_map_mutex_
+    Registry->>Registry: register_logger_(new_logger)
+    Registry-->>-spdlog: 
+
+    %% 3. Apply global flush level
+    User->>spdlog: flush_on(level::err)
+    spdlog->>+Registry: flush_on(err)
+    Registry->>Registry: lock logger_map_mutex_
+    loop over each logger
+        Registry->>Logger: flush_on(err)
+    end
+    Registry-->>-spdlog: 
+
+    %% 4. Flush all loggers (orderly shutdown preparation)
+    User->>spdlog: flush_all()
+    spdlog->>+Registry: flush_all()
+    Registry->>Registry: lock logger_map_mutex_
+    loop over each logger
+        Registry->>Logger: flush()
+    end
+    Registry-->>-spdlog: 
+
+    %% 5. Shutdown the registry
+    User->>spdlog: shutdown()
+    spdlog->>+Registry: shutdown()
+    Registry->>Registry: lock flusher_mutex_
+    Registry->>PeriodicFlusher: reset()
+    Registry->>Registry: drop_all()
+    Registry->>Registry: lock logger_map_mutex_
+    Registry->>Registry: clear loggers_
+    Registry->>Registry: reset default_logger_
+    Registry->>Registry: lock tp_mutex_
+    Registry->>ThreadPool: reset()
+    Registry-->>-spdlog: 
+
+    note over Registry: Shutdown complete
