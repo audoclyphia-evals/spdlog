@@ -1,0 +1,42 @@
+---
+config:
+  layout: elk
+---
+classDiagram
+    direction TB
+
+    %% Grouping by namespace (flat, no nesting)
+    namespace spdlog {
+        class async_factory_impl {
+            <<Factory>>
+            +create(logger_name, args...): shared_ptr~async_logger~
+        }
+        class async_logger {
+            %% Fast asynchronous logger using pre‑allocated queue and a single back thread
+        }
+    }
+
+    namespace details {
+        class thread_pool {
+            %% Thread pool that owns a queue and processes async messages
+        }
+        class async_msg {
+            %% Structure representing an asynchronous log message for queueing
+        }
+        class mpmc_blocking_queue {
+            %% Thread‑safe blocking queue for multi‑producer/multi‑consumer
+        }
+        class circular_q {
+            %% Fixed‑size circular queue (ring buffer) using vector storage
+        }
+    }
+
+    %% Relationships (outside all namespace blocks)
+    async_factory_impl --> async_logger : creates
+    async_logger --> thread_pool : posts messages to
+    thread_pool --> mpmc_blocking_queue : manages
+    mpmc_blocking_queue --> circular_q : uses
+
+    %% The async_msg type flows through the queue
+    async_logger ..> async_msg : sends
+    thread_pool ..> async_msg : processes

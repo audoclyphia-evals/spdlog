@@ -1,0 +1,60 @@
+flowchart TB
+    %% ===== User Tier =====
+    subgraph User_Tier [User Interaction]
+        user([User])
+    end
+
+    %% ===== API / Factory Tier =====
+    subgraph API_Layer [Public API]
+        api[spdlog.h]
+        factory[Sync Factory]
+    end
+
+    %% ===== Core Components =====
+    subgraph Core_Components [Core Components]
+        logger[Logger]
+        registry[Registry]
+        formatter[Pattern Formatter]
+        sink[Base Sink]
+    end
+
+    %% ===== Async Infrastructure =====
+    subgraph Async_Infrastructure [Async Infrastructure]
+        async_logger[Async Logger]
+        thread_pool[Thread Pool]
+    end
+
+    %% ===== Sink Implementations =====
+    subgraph Sink_Implementations [Sink Implementations]
+        file_sinks[File Sinks]
+        console_sinks[Console Sinks]
+    end
+
+    %% ===== Output Destinations =====
+    subgraph Output_Destinations [Output Destinations]
+        file((File))
+        console((Console))
+    end
+
+    %% ===== Relationships =====
+    user -->|log API calls| api
+    api -->|creates via| factory
+    api -->|creates via async.h| async_logger
+    factory -->|creates| logger
+
+    registry -->|manages| logger
+    registry -->|configures| formatter
+    registry -->|configures| sink
+
+    logger -->|writes to| sink
+    logger -->|formats with| formatter
+
+    async_logger -->|extends| logger
+    async_logger -->|posts to| thread_pool
+    thread_pool -->|writes to| sink
+
+    sink -.-> file_sinks
+    sink -.-> console_sinks
+
+    file_sinks -->|output| file
+    console_sinks -->|output| console

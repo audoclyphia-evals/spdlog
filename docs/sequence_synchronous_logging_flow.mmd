@@ -1,0 +1,21 @@
+sequenceDiagram
+    autonumber
+    actor User
+    participant spdlog as "spdlog::info"
+    participant Logger as "spdlog::logger"
+    participant Sink as "sink (interface)"
+
+    User->>+spdlog: info(fmt, args...)
+    spdlog->>+Logger: info(fmt, args...)
+    
+    Logger->>Logger: log(level::info, fmt, args...)
+    note right of Logger: Level check & format message using fmt library
+    
+    opt Level enabled
+        Logger->>Logger: sink_it_(log_msg)
+        Logger->>+Sink: log(log_msg)
+        Sink->>Sink: format & write to output
+        Sink-->>-Logger: (return)
+        Logger-->>-spdlog: (return)
+        spdlog-->>-User: (return)
+    end

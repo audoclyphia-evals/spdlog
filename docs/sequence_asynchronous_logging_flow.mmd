@@ -1,0 +1,43 @@
+sequenceDiagram
+    autonumber
+    participant User as "User Code"
+    participant AsyncLogger as "async_logger"
+    participant ThreadPool as "thread_pool"
+    participant Queue as "mpmc_blocking_queue"
+    participant Worker as "Worker Thread"
+    participant Sink as "Backend Sink"
+
+    %% Log message flow - async_logger::sink_it_() posts to thread_pool
+    User->>+AsyncLogger: info("Async message #{}", i)
+    note over AsyncLogger: sink_it_(msg)
+    AsyncLogger->>+ThreadPool: post_log(shared_from_this(), msg, overflow_policy)
+    note over ThreadPool: Creates async_msg(type=log)
+    ThreadPool->>+Queue: enqueue(async_msg)
+    Queue-->>-ThreadPool: ok
+    ThreadPool-->>-AsyncLogger: return
+    AsyncLogger-->>-User: return
+
+    %% Worker thread processes queue messages
+    loop Process messages
+        Worker->>+Queue: dequeue()
+        Queue-->>-Worker: async_msg
+        alt msg type is log
+            Worker->>+Sink: log(msg)
+            Sink-->>-Worker: return
+        else msg type is flush
+            Worker->>+Sink: flush()
+            Sink-->>-Worker: return
+        else msg type is terminate
+            Worker->>Worker: exit loop
+        end
+    end
+
+    %% Flush flow - async_logger::flush_() posts flush to thread_pool
+    User->>+AsyncLogger: flush()
+    note over AsyncLogger: flush_(msg)
+    AsyncLogger->>+ThreadPool: post_flush(shared_from_this(), overflow_policy)
+    note over ThreadPool: Creates async_msg(type=flush)
+    ThreadPool->>+Queue: enqueue(async_msg)
+    Queue-->>-ThreadPool: ok
+    ThreadPool-->>-AsyncLogger: return
+    AsyncLogger-->>-User: return

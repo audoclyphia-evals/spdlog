@@ -1,0 +1,34 @@
+sequenceDiagram
+    participant RS as "rotating_file_sink" %% source: Context #2 row 3
+    participant DS as "daily_file_sink" %% source: Context #2 row 1
+    participant HS as "hourly_file_sink" %% source: Context #2 row 2
+
+    Note over RS,HS: Log message arrives at sink via sink_it_()
+
+    par Size-based rotation flow
+        activate RS
+        RS->>RS: Check file size vs max_size
+        alt Size exceeds max_size
+            RS->>RS: rotate_now()
+            RS->>RS: calc_filename(index)
+            Note over RS: Rename current file#59;<br/>open new file
+            RS->>RS: Cleanup old files > max_files
+        end
+        deactivate RS
+    and Daily rotation flow
+        activate DS
+        DS->>DS: Check current time vs rotation_hour/minute
+        alt Time matches rotation window
+            Note over DS: Rename current file with date stamp
+            DS->>DS: Cleanup old files > max_files
+        end
+        deactivate DS
+    and Hourly rotation flow
+        activate HS
+        HS->>HS: Check hour change since last rotation
+        alt New hour detected
+            Note over HS: Rename current file with date-hour stamp
+            HS->>HS: Cleanup old files > max_files
+        end
+        deactivate HS
+    end
