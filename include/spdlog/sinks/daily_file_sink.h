@@ -13,12 +13,9 @@
 #include <spdlog/fmt/fmt.h>
 #include <spdlog/sinks/base_sink.h>
 
-#include <chrono>
-#include <cstdio>
-#include <iomanip>
-#include <mutex>
-#include <sstream>
-#include <string>
+/**
+ * Namespace block containing spdlog's daily file sink implementation, including the daily_filename_calculator struct for generating daily log filenames in basename.YYYY-MM-DD.ext format, the daily_file_sink template class for log rotation and file management, and thread-safe/unsink type aliases (daily_file_sink_mt, daily_file_sink_st) for convenient usage.
+ */
 
 SPDLOG_NAMESPACE_BEGIN
 namespace sinks {
@@ -124,6 +121,10 @@ protected:
     void flush_() override { file_helper_.flush(); }
 
 private:
+
+    /**
+     * Initializes the circular queue of existing daily log filenames by walking backwards one calendar day at a time, using tm manipulation and mktime to correctly handle daylight saving time transitions and avoid duplicate or skipped dates, ensuring proper file rotation and cleanup based on max_files_ setting.
+     */
     void init_filenames_q_() {
         using details::os::path_exists;
 

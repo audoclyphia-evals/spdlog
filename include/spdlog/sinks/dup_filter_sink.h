@@ -12,31 +12,17 @@
 #include <mutex>
 #include <string>
 
-// Duplicate message removal sink.
-// Skip the message if previous one is identical and less than "max_skip_duration" have passed
-//
-// Example:
-//
-//     #include <spdlog/sinks/dup_filter_sink.h>
-//
-//     int main() {
-//         auto dup_filter = std::make_shared<dup_filter_sink_st>(std::chrono::seconds(5),
-//         level::info); dup_filter->add_sink(std::make_shared<stdout_color_sink_mt>());
-//         spdlog::logger l("logger", dup_filter);
-//         l.info("Hello");
-//         l.info("Hello");
-//         l.info("Hello");
-//         l.info("Different Hello");
-//     }
-//
-// Will produce:
-//       [2019-06-25 17:50:56.511] [logger] [info] Hello
-//       [2019-06-25 17:50:56.512] [logger] [info] Skipped 3 duplicate messages..
-//       [2019-06-25 17:50:56.512] [logger] [info] Different Hello
+/**
+ * This namespace encapsulates the implementation of dup_filter_sink within spdlog's sink infrastructure, providing a template class for filtering duplicate log messages and type aliases for thread-safe (dup_filter_sink_mt) and single-threaded (dup_filter_sink_st) variants.
+ */
 
 SPDLOG_NAMESPACE_BEGIN
 namespace sinks {
 template <typename Mutex>
+
+/**
+ * dup_filter_sink is a template class inheriting from dist_sink that filters duplicate log messages using chrono-based time durations. It includes constructors accepting a max_skip_duration parameter for deduplication windows, and maintains protected members like max_skip_duration_, last_msg_time_, last_msg_payload_, skip_counter_, and skipped_msg_log_level_ to track and manage duplicate log entries.
+ */
 class dup_filter_sink : public dist_sink<Mutex> {
 public:
     template <class Rep, class Period>
@@ -57,6 +43,9 @@ protected:
     // message is never filtered by a sink's own level threshold.
     level::level_enum skipped_msg_log_level_ = level::level_enum::off;
 
+    /**
+     * The sink_it_ method overrides the base class to filter duplicate log messages within a time window. It uses filter_ to decide if a message should be skipped, increments skip_counter_ for duplicates, tracks the highest log level seen during skips, and logs a summary message with the count and highest level when a new unique message arrives, then resets state and passes the message to downstream sinks.
+     */
     void sink_it_(const details::log_msg &msg) override {
         bool filtered = filter_(msg);
         if (!filtered) {

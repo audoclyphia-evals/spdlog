@@ -1,4 +1,4 @@
-// Copyright(c) 2015-present, Gabi Melman & spdlog contributors.
+// Copyright(c) 2015-present, Gabi Melman & spdlog contributors.  // Header file that declares the rate_limit_sink class template and associated factory functions for creating rate-limited loggers. It includes dependencies for chrono formatting utilities to handle time windows and provides a rate-limiting mechanism that controls the flow of log messages to downstream sinks.
 // Distributed under the MIT License (http://opensource.org/licenses/MIT)
 
 #pragma once
@@ -13,43 +13,18 @@
 #include <mutex>
 #include <string>
 
-// Rate-limiting sink.
-//
-// Passes at most `max_count` messages through to the child sinks within each
-// rolling time window of `window_duration`.  Once the per-window quota is
-// exhausted, subsequent messages are silently counted as dropped.  When the
-// window resets (i.e. when the next message arrives after the window has
-// expired), a summary line is emitted first:
-//
-//     [warn]  Rate limit: dropped 42 messages in last window
-//
-// The summary is emitted at `warn` level by default so it is visible even when
-// child sinks suppress lower levels.  You can customise this via
-// `set_summary_level()`.
-//
-// Unlike dup_filter_sink (which only suppresses *identical* messages),
-// rate_limit_sink suppresses *any* messages once the quota is reached,
-// regardless of their content.  This makes it suitable for hot code paths that
-// can produce a large volume of distinct messages.
-//
-// Example:
-//
-//     #include <spdlog/sinks/rate_limit_sink.h>
-//
-//     // Allow at most 10 messages per second; excess messages are dropped.
-//     auto rl = std::make_shared<spdlog::sinks::rate_limit_sink_mt>(
-//         10, std::chrono::seconds(1));
-//     rl->add_sink(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
-//
-//     spdlog::logger logger("my_logger", rl);
-//     for (int i = 0; i < 100; ++i) {
-//         logger.info("message {}", i);   // only the first 10 pass per second
-//     }
+/**
+ * Namespace block within the spdlog::sinks namespace that fully implements the rate_limit_sink class template, including constructors, the rate-limiting core logic in sink_it_, and methods for managing summary levels and drop counters. This encapsulates the rate-limiting functionality for log message processing.
+ */
 
 SPDLOG_NAMESPACE_BEGIN
 namespace sinks {
 
 template <typename Mutex>
+
+/**
+ * Template class that implements a rate-limiting sink, inheriting from dist_sink. It enforces a maximum of max_count messages per window_duration using chrono-based time tracking. Class members manage per-window state (counts, window start) and lifetime drop counters, with a configurable summary_level for emitting drop summaries.
+ */
 class rate_limit_sink : public dist_sink<Mutex> {
 public:
     // Allow at most `max_count` messages during each `window_duration` interval.
@@ -69,30 +44,43 @@ public:
           window_duration_(
               std::chrono::duration_cast<std::chrono::microseconds>(window_duration)) {}
 
-    // Change the log level used for the "Rate limit: dropped N messages" summary line.
+    /**
+     * Sets the log level (summary_level_) at which the sink emits a summary message indicating the number of dropped messages in the previous window. Uses mutex locking to ensure thread-safe updates to the configuration in multi-threaded contexts.
+     */
     void set_summary_level(level::level_enum lvl) {
         std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
         summary_level_ = lvl;
     }
 
+    /**
+     * Returns the current summary log level (summary_level_), which determines the verbosity of the drop summary messages. Access is protected by a mutex to maintain consistency in concurrent logging scenarios.
+     */
     level::level_enum summary_level() const {
         std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
         return summary_level_;
     }
 
-    // Returns the total number of messages dropped since construction (or the
-    // last call to reset_drop_counter()).
+    /**
+     * Returns the total number of messages dropped by the sink since its creation or last reset (total_dropped_). This provides a cumulative metric for rate-limiting effectiveness, with thread-safe access via mutex.
+     */
     size_t drop_counter() const {
         std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
         return total_dropped_;
     }
 
+    /**
+     * Resets the total_dropped_ counter to zero, allowing users to monitor drop counts over specific intervals. Ensures atomic operation through mutex synchronization to avoid race conditions.
+     */
     void reset_drop_counter() {
         std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
         total_dropped_ = 0;
     }
 
 protected:
+
+    /**
+     * Override of the sink_it_ method that implements the rate-limiting logic. It checks window expiration, emits a summary for dropped messages if the window resets, and either forwards the message to child sinks (if within quota) or increments drop counters. Uses chrono utilities for time comparison and manages window state.
+     */
     void sink_it_(const details::log_msg &msg) override {
         const auto now = msg.time;
 
@@ -157,6 +145,10 @@ using rate_limit_sink_st = rate_limit_sink<details::null_mutex>;
 // `window_duration` — length of each rolling window (any std::chrono duration)
 //
 template <typename Factory = synchronous_factory>
+
+/**
+ * Factory function that creates a multi-threaded logger (logger with rate_limit_sink_mt sink) using the synchronous_factory. It configures rate limiting with max_count and window_duration, suitable for concurrent logging environments.
+ */
 inline std::shared_ptr<logger> rate_limit_logger_mt(const std::string &logger_name,
                                                     size_t max_count,
                                                     std::chrono::microseconds window_duration) {
@@ -165,6 +157,10 @@ inline std::shared_ptr<logger> rate_limit_logger_mt(const std::string &logger_na
 }
 
 template <typename Factory = synchronous_factory>
+
+/**
+ * Factory function that creates a single-threaded logger (logger with rate_limit_sink_st sink) using the synchronous_factory. Optimized for single-threaded performance with a null_mutex, applying the same rate-limiting parameters without thread-safety overhead.
+ */
 inline std::shared_ptr<logger> rate_limit_logger_st(const std::string &logger_name,
                                                     size_t max_count,
                                                     std::chrono::microseconds window_duration) {

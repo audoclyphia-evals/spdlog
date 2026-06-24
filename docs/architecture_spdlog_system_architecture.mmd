@@ -1,0 +1,12 @@
+flowchart TB
+    user([End User]) -->|HTTPS| gateway{{API Gateway}}
+    
+    subgraph Backend_Services [Backend Services]
+        gateway --> auth[Auth Service]
+        gateway --> logic[Core Logic]
+    end
+    
+    subgraph Storage_Tier [Storage Tier]
+        auth --> session[(Redis)]
+        logic --> db[(PostgreSQL)]
+    end

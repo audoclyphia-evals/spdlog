@@ -1,4 +1,4 @@
-// Copyright(c) 2015-present, Gabi Melman & spdlog contributors.
+// Copyright(c) 2015-present, Gabi Melman & spdlog contributors.  // Header file defining the mdc class for thread-local diagnostic context in spdlog logging. It provides a simple key-value map stored in thread-local storage to enrich log messages with contextual data. Enforces thread-local storage support via the SPDLOG_NO_TLS preprocessor guard, which triggers an error if defined. MDC is designed for synchronous logging and is not supported with async loggers, as messages are processed on worker threads where thread-local values are inaccessible. Usage involves setting values with put() and retrieving with get(), with example code and warnings detailed in the comments to ensure proper context handling.
 // Distributed under the MIT License (http://opensource.org/licenses/MIT)
 
 #pragma once
