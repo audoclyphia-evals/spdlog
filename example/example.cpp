@@ -27,7 +27,6 @@ void custom_flags_example();
 void file_events_example();
 void replace_default_logger_example();
 void mdc_example();
-void rate_limit_example();
 
 #include "spdlog/spdlog.h"
 #include "spdlog/cfg/env.h"   // support for loading levels from the environment variable
@@ -87,7 +86,6 @@ int main(int, char *[]) {
         file_events_example();
         replace_default_logger_example();
         mdc_example();
-        rate_limit_example();
 
         // Flush all *registered* loggers using a worker thread every 3 seconds.
         // note: registered loggers *must* be thread safe for this to work correctly!
@@ -401,27 +399,3 @@ void mdc_example() {
     // if TLS feature is disabled
 }
 #endif
-
-// Rate-limit sink example.
-// Allows at most N messages per time window. Excess messages are dropped and
-// a summary ("Rate limit: dropped N messages in last window") is emitted at
-// warn level when the next window opens.
-#include "spdlog/sinks/rate_limit_sink.h"
-void rate_limit_example() {
-    // Allow at most 3 messages per second; the rest are dropped.
-    auto rl_sink =
-        std::make_shared<spdlog::sinks::rate_limit_sink_mt>(3, std::chrono::seconds(1));
-    rl_sink->add_sink(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
-
-    spdlog::logger rl_logger("rate_limit_logger", rl_sink);
-    rl_logger.set_level(spdlog::level::trace);
-
-    // Fire 10 messages rapidly — only the first 3 will be logged; the rest are
-    // counted and reported in the summary the next time the window resets.
-    for (int i = 1; i <= 10; ++i) {
-        rl_logger.info("Rate-limit message #{}", i);
-    }
-
-    // Drop counter is accessible directly on the sink.
-    spdlog::info("Total messages dropped so far: {}", rl_sink->drop_counter());
-}

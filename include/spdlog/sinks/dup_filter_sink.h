@@ -53,19 +53,13 @@ protected:
     log_clock::time_point last_msg_time_;
     std::string last_msg_payload_;
     size_t skip_counter_ = 0;
-    // Track the *highest* level seen during a skip window so the summary
-    // message is never filtered by a sink's own level threshold.
     level::level_enum skipped_msg_log_level_ = level::level_enum::off;
 
     void sink_it_(const details::log_msg &msg) override {
         bool filtered = filter_(msg);
         if (!filtered) {
             skip_counter_ += 1;
-            // Keep the highest severity seen so the "Skipped N" summary
-            // is emitted at that level rather than the first duplicate's level.
-            if (msg.level > skipped_msg_log_level_) {
-                skipped_msg_log_level_ = msg.level;
-            }
+            skipped_msg_log_level_ = msg.level;
             return;
         }
 
@@ -85,10 +79,6 @@ protected:
         dist_sink<Mutex>::sink_it_(msg);
         last_msg_time_ = msg.time;
         skip_counter_ = 0;
-        // Reset to off so the next skip window starts fresh, then seed it
-        // immediately with the current message's level so that if the very
-        // next message is a duplicate we already have a valid level recorded.
-        skipped_msg_log_level_ = level::level_enum::off;
         last_msg_payload_.assign(msg.payload.data(), msg.payload.data() + msg.payload.size());
     }
 

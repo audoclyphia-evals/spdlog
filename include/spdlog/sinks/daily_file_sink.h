@@ -130,28 +130,13 @@ private:
         filenames_q_ = details::circular_q<filename_t>(static_cast<size_t>(max_files_));
         std::vector<filename_t> filenames;
         auto now = log_clock::now();
-        // Walk backwards one calendar day at a time by decrementing the date
-        // component directly (via tm) rather than subtracting fixed 24-hour
-        // intervals.  Subtracting 24 hours is wrong around DST transitions
-        // and can produce the same date string twice (fall-back) or skip a
-        // date entirely (spring-forward).
         while (filenames.size() < max_files_) {
             const auto new_filename = FileNameCalc::calc_filename(base_filename_, now_tm(now));
             if (!path_exists(new_filename)) {
                 break;
             }
-            // Avoid pushing the same filename twice (guards against any
-            // remaining edge-cases or custom calculators that collapse dates).
-            if (!filenames.empty() && filenames.back() == new_filename) {
-                break;
-            }
             filenames.emplace_back(new_filename);
-            // Step back exactly one calendar day using mktime so that DST
-            // transitions are handled correctly by the C runtime.
-            tm prev = now_tm(now);
-            prev.tm_mday -= 1;
-            prev.tm_isdst = -1;  // let mktime determine DST
-            now = log_clock::from_time_t(std::mktime(&prev));
+            now -= std::chrono::hours(24);
         }
         for (auto iter = filenames.rbegin(); iter != filenames.rend(); ++iter) {
             filenames_q_.push_back(std::move(*iter));
