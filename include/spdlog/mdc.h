@@ -20,6 +20,12 @@
 // spdlog::mdc::put("mdc_key_1", "mdc_value_1");
 // spdlog::info("Hello, {}", "World!");  // => [2024-04-26 02:08:05.040] [info]
 // [mdc_key_1:mdc_value_1] Hello, World!
+//
+// WARNING: MDC values are stored in thread-local storage. When using an async_logger, log
+// messages are processed on a different thread (the thread pool worker), so MDC values set
+// on the calling thread will NOT be visible when the message is actually formatted and written.
+// If you need per-message context with async logging, embed the context values directly in
+// the log message string instead.
 
 SPDLOG_NAMESPACE_BEGIN
 class SPDLOG_API mdc {

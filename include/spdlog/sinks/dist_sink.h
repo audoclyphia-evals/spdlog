@@ -44,7 +44,12 @@ public:
         sinks_ = std::move(sinks);
     }
 
-    std::vector<std::shared_ptr<sink>> &sinks() { return sinks_; }
+    // Returns a *copy* of the current sinks vector to avoid exposing the
+    // internal vector to unsynchronised external mutation (data race on _mt).
+    std::vector<std::shared_ptr<sink>> sinks() const {
+        std::lock_guard<Mutex> lock(base_sink<Mutex>::mutex_);
+        return sinks_;
+    }
 
 protected:
     void sink_it_(const details::log_msg &msg) override {
