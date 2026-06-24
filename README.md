@@ -23,10 +23,11 @@ spdlog also includes a global registry that manages logger instances, supports c
 - **File rotation** — Size-based and time-based (daily, hourly) rotating file sink implementations for log file management
 - **Log level management** — Configurable severity levels per logger with support for threshold filtering
 - **Backtrace support** — Circular buffer for capturing recent log messages to aid in debugging
-- **Mapped Diagnostic Context (MDC)** — Thread-local key-value storage for contextual log enrichment
+- **Mapped Diagnostic Context (MDC)** — Thread-local key-value storage for contextual log enrichment (synchronous mode only)
+- **Rate limiting** — Sink that enforces a maximum message count per time window, emitting summary messages and tracking dropped counts
 - **Chrono formatting utilities** — Time and date formatting with locale-aware parsing and duration formatting
 - **Platform-specific support** — Windows console color sinks, POSIX system utilities, and Android system log integration
-- **Sink composition** — Distribution sink for forwarding messages to multiple sub-sinks, and duplicate filter sink for suppressing repeated messages
+- **Sink composition** — Distribution sink for forwarding messages to multiple sub-sinks with thread-safe access, duplicate filter sink for suppressing repeated messages, and rate limiting sink for throughput control
 - **Qt integration** — Sink classes for outputting to QTextEdit widgets with color support
 
 ## Requirements
@@ -215,6 +216,87 @@ void async_example() {
 }
 ```
 
+### Rate limiting
+
+Limit log message throughput to a configurable maximum per time window:
+
+```cpp
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/rate_limit_sink.h>
+
+void rate_limit_example() {
+    // Allow at most 100 messages per 5-second window
+    auto rate_logger = spdlog::rate_limit_logger_mt(
+        "rate_limited", 100, std::chrono::seconds(5));
+
+    // Messages exceeding the limit are dropped; a summary is emitted
+    // when the window resets.
+    for (int i = 0; i < 200; ++i) {
+        rate_logger->info("Message {}", i);
+    }
+}
+```
+
+### Duplicate filter sink
+
+Suppress repeated log messages within a configurable time window, emitting a summary when duplicates resume:
+
+```cpp
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/dup_filter_sink.h>
+
+void dup_filter_example() {
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+
+    // Suppress duplicate messages within a 5-second window.
+    // The summary message is emitted at the highest severity seen
+    // during the skip window.
+    auto dup_sink = std::make_shared<spdlog::sinks::dup_filter_sink_mt>(
+        std::chrono::seconds(5),
+        spdlog::sinks_init_list{console_sink});
+
+    auto logger = std::make_shared<spdlog::logger>("dup_filtered", dup_sink);
+
+    for (int i = 0; i < 100; ++i) {
+        logger->info("Repeated message");  // Only logged once per 5s window
+    }
+    // After the window expires and a new unique message arrives, a summary
+    // like "Skipped 99 duplicate messages.." is emitted.
+}
+```
+
+The `dup_filter_sink` inherits from `dist_sink`, so it composes with any number of downstream sinks. The skip duration determines how long a message pattern must remain unchanged before duplicates are suppressed.
+
+### Distribution sink
+
+The `dist_sink` forwards log messages to multiple sub-sinks, enabling fan-out to different outputs. It serves as the base class for composite sinks like `dup_filter_sink` and `rate_limit_sink`:
+
+```cpp
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/basic_file_sink.h>
+#include <spdlog/sinks/dist_sink.h>
+
+void dist_sink_example() {
+    auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
+    auto file_sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>("logs/dist.log");
+
+    auto dist = std::make_shared<spdlog::sinks::dist_sink_mt>();
+    dist->add_sink(console_sink);
+    dist->add_sink(file_sink);
+
+    auto logger = std::make_shared<spdlog::logger>("distributed", dist);
+    logger->info("Sent to both console and file");
+
+    // Sinks can be added or removed at runtime (thread-safe)
+    dist->remove_sink(file_sink);
+    dist->add_sink(file_sink);
+}
+```
+
+The `sinks()` method returns a thread-safe copy of the current sink list. The `dist_sink` propagates pattern and formatter changes to all sub-sinks automatically.
+
 ### Backtrace support
 
 Capture recent log messages for debugging intermittent issues:
@@ -234,340 +316,30 @@ void backtrace_example() {
 }
 ```
 
-## Additional Documentation
+### TCP sink with reconnection backoff
+
+The TCP sink automatically reconnects when the connection drops, using exponential backoff to avoid blocking the logging thread when the server is unavailable:
+
+```cpp
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/tcp_sink.h>
+
+void tcp_example() {
+    spdlog::sinks::tcp_sink_config config("localhost", 9876);
+    config.lazy_connect = true;          // connect on first log call
+    config.timeout_ms = 3000;            // 3-second socket timeout
+    config.reconnect_delay_ms = 500;     // initial reconnect delay
+    config.max_reconnect_delay_ms = 30000; // cap at 30 seconds
+
+    auto tcp_logger = spdlog::create<spdlog::sinks::tcp_sink_mt>("tcp_logger", config);
+    tcp_logger->info("Message sent over TCP");
+}
+```
+
+## 📚 Additional Documentation
 
 For more detailed information, see the following documentation:
 
-- [spdlog Architecture](ARCHITECTURE.md) — Provides a high-level overview of the library's architecture, component relationships, and design decisions, essential for new contributors and advanced users.
-- [Contributing to spdlog](CONTRIBUTING.md) — Guides contributors on development environment setup, test execution, and coding conventions.
-- [spdlog Usage Guide](USAGE.md) — Provides comprehensive usage examples and configuration options for common logging scenarios.
-- [spdlog Sinks Reference](SINKS.md) — Documents all available sink types, their configuration parameters, and usage examples.
-- [spdlog API Overview](API.md) — Provides a high-level conceptual guide to the spdlog API, including logger creation, level management, pattern formatting, and global configuration patterns.
-- [Custom Formatting in spdlog](CUSTOM_FORMATTING.md) — Explains how to create custom formatters, use pattern flags, and extend formatting for user-defined types.
-
----
-
-The following section provides a detailed API reference for the core components of spdlog, including endpoints for logger retrieval, logging, formatting, and sink management.
-
-## API Reference
-
-### Registry
-
-#### Retrieve a logger by name
-
-Gets a logger instance from the central registry using its unique name.
-
-- **Path**: `logger with name`
-- **Method**: GET
-- **Operation ID**: `getLoggerByName`
-- **Tags**: Registry
-
-**Parameters**:
-- `name` (path, required): Name of the logger to retrieve.
-
-**Responses**:
-- `200`: Logger found and returned.
-- `404`: Logger not found.
-- `500`: Internal server error.
-
-#### Retrieve raw pointer to default logger
-
-Returns the raw pointer to the default logger instance managed by the registry.
-
-- **Path**: `registry.get_default_raw`
-- **Method**: GET
-- **Operation ID**: `getDefaultRaw`
-- **Tags**: Registry
-
-**Responses**:
-- `200`: Success.
-- `500`: Internal server error.
-
-### Formatting
-
-#### Dynamic formatting argument store
-
-Provides a dynamic list of formatting arguments with storage that can be converted into `basic_format_args` for type-erased formatting functions such as `fmt::vformat`.
-
-- **Path**: `abc`
-- **Method**: GET
-- **Operation ID**: `getDynamicFormatArgStore`
-- **Tags**: Formatting
-
-**Responses**:
-- `200`: Success.
-- `400`: Bad request.
-- `401`: Unauthorized.
-- `500`: Internal server error.
-
-#### Append reference-wrapped argument to storage
-
-Appends a reference-wrapped argument to the storage, ensuring type safety.
-
-- **Path**: `push_back`
-- **Method**: GET
-- **Operation ID**: `appendReferenceWrappedArgument`
-- **Tags**: Storage
-
-**Responses**:
-- `200`: Success.
-- `400`: Bad request.
-- `500`: Internal server error.
-
-#### Write formatted time data to buffer
-
-Writes a formatted time structure to a buffer, using the `time_put` facet of the provided locale for locale-specific formatting.
-
-- **Path**: ` `
-- **Method**: PUT
-- **Operation ID**: `writeFormattedTimeToBuffer`
-- **Tags**: TimeFormatting
-
-**Parameters** (query):
-- `format` (required): Format character for time formatting.
-- `modifier` (required): Modifier character for time formatting.
-
-**Request body** (application/json):
-- `time` (object, required): Time structure (`std::tm`) with date/time fields.
-- `locale` (object, required): Locale object for formatting, convertible to `std::locale`.
-
-**Responses**:
-- `200`: Time data formatted and written to buffer successfully.
-- `400`: Bad request due to invalid format or modifier.
-- `401`: Unauthorized.
-- `500`: Internal server error during formatting.
-
-#### Format arguments into a buffer
-
-Formats arguments into a buffer using a format string.
-
-- **Path**: `vformat_to`
-- **Method**: GET
-- **Operation ID**: `vformatTo`
-- **Tags**: Formatting
-
-**Parameters** (query):
-- `buf` (required): Output buffer for formatted result.
-- `fmt` (required): Format string.
-- `args` (required): Format arguments (array of strings).
-- `loc` (optional): Locale reference.
-
-**Responses**:
-- `200`: Success.
-- `400`: Bad request.
-- `500`: Internal server error.
-
-#### Retrieve a formatted printf argument by ID
-
-Returns the format argument at the specified index from the printf context.
-
-- **Path**: `FMT_BEGIN_EXPORT`
-- **Method**: GET
-- **Operation ID**: `getPrintfArg`
-- **Tags**: PrintfContext
-
-**Parameters**:
-- `id` (path, required): Argument index to retrieve.
-
-**Responses**:
-- `200`: Successfully retrieved argument.
-- `400`: Invalid argument ID.
-- `500`: Internal server error.
-
-#### Retrieve a formatted argument by ID
-
-Returns the formatted argument associated with the given ID from the printf context.
-
-- **Path**: `arg`
-- **Method**: GET
-- **Operation ID**: `getFormattedArgumentById`
-- **Tags**: Formatting
-
-**Parameters**:
-- `id` (path, required): Identifier of the argument to retrieve.
-
-**Responses**:
-- `200`: Retrieved formatted argument successfully.
-- `400`: Invalid ID.
-- `404`: Argument not found.
-- `500`: Internal server error.
-
-#### Format reference_wrapper types
-
-Formats a given `std::reference_wrapper` by unwrapping it and using the formatter for the underlying type.
-
-- **Path**: `format`
-- **Method**: GET
-- **Operation ID**: `formatReferenceWrapper`
-- **Tags**: Formatters
-
-**Parameters** (query):
-- `ref` (required): `std::reference_wrapper<T>` instance.
-- `ctx` (required): FormatContext providing output iterator.
-
-**Responses**:
-- `200`: Formatted output iterator.
-- `400`: Invalid reference wrapper or context.
-- `500`: Internal formatting error.
-
-### Standard Library
-
-#### Namespace containing type traits and utilities
-
-Namespace containing type traits and utilities for formatting standard library types such as filesystem paths, variants, and error codes.
-
-- **Path**: `std::`
-- **Method**: GET
-- **Operation ID**: `getStdNamespace`
-- **Tags**: Standard Library, Formatting
-
-**Responses**:
-- `200`: Successfully retrieved namespace information.
-- `404`: Namespace not found.
-- `500`: Internal server error.
-
-#### Get pointer value from unique_ptr
-
-Retrieves and formats the raw pointer value from a `unique_ptr` for display or logging purposes.
-
-- **Path**: `ptr`
-- **Method**: GET
-- **Operation ID**: `getPointerValue`
-- **Tags**: Formatting
-
-**Parameters** (query):
-- `pointer` (required): The pointer value to format.
-
-**Responses**:
-- `200`: Pointer value formatted successfully.
-- `400`: Invalid pointer value.
-- `500`: Internal server error.
-
-### Demangling
-
-#### Write demangled C++ type names
-
-Returns the demangled and normalized name of a C++ type, applying platform-specific transformations for libc++ and MSVC ABIs.
-
-- **Path**: `write_demangled_name`
-- **Method**: GET
-- **Operation ID**: `writeDemangledName`
-- **Tags**: Demangling
-
-**Parameters** (query):
-- `type_name` (required): The mangled C++ type name to demangle.
-
-**Responses**:
-- `200`: Demangled type name successfully returned.
-- `400`: Invalid or missing `type_name` parameter.
-- `500`: Internal demangling failure.
-
-### Logging
-
-#### Log a formatted message
-
-Public endpoint to format and log a message using the logger.
-
-- **Path**: `log`
-- **Method**: GET
-- **Operation ID**: `logMessage`
-- **Tags**: Logging
-
-**Parameters** (query):
-- `level` (required): Log level (trace, debug, info, warn, error, critical).
-- `message` (required): Format string message.
-- `file` (optional): Source file for logging.
-- `line` (optional): Source line number.
-
-**Responses**:
-- `200`: Message logged successfully.
-- `400`: Invalid parameters.
-- `401`: Unauthorized.
-- `500`: Internal server error.
-
-#### Sink log message to Kafka topic
-
-Produces a log message to the configured Kafka topic via the sink implementation.
-
-- **Path**: `sink_it`
-- **Method**: GET
-- **Operation ID**: `sinkLogMessage`
-- **Tags**: Logging, Kafka
-
-**Parameters** (query):
-- `message` (required): The log message payload to be produced.
-
-**Responses**:
-- `200`: Message successfully sunk to Kafka.
-- `400`: Invalid message format or missing parameter.
-- `401`: Unauthorized.
-- `500`: Internal server error during message production.
-
-### Logger
-
-#### Logger class definition
-
-Provides the complete definition of the Logger class including constructors, logging methods, and sink management.
-
-- **Path**: `logger`
-- **Method**: GET
-- **Operation ID**: `getLoggerDefinition`
-- **Tags**: Logger
-
-**Responses**:
-- `200`: Logger class definition.
-
-### Configuration (Kafka)
-
-#### Retrieve current Kafka bootstrap servers configuration
-
-Returns the list of Kafka bootstrap servers currently configured for the sink.
-
-- **Path**: `bootstrap.servers`
-- **Method**: GET
-- **Operation ID**: `getBootstrapServers`
-- **Tags**: Kafka, Configuration
-
-**Responses**:
-- `200`: Successfully retrieved bootstrap servers.
-- `400`: Bad request.
-- `500`: Internal server error.
-
-### Formatting (Localized)
-
-#### Write localized number formatting to output
-
-Formats a number according to locale specifications and writes the result.
-
-- **Path**: `write_loc`
-- **Method**: PUT
-- **Operation ID**: `writeLoc`
-- **Tags**: Formatting
-
-**Request body** (application/json):
-- `value` (number, required): The numeric value to format.
-- `specs` (object, required): Formatting specifications (precision, grouping, etc.).
-- `loc` (string, required): Locale identifier (e.g., 'en_US').
-
-**Responses**:
-- `200`: Formatting succeeded.
-- `400`: Invalid input parameters.
-- `401`: Unauthorized.
-- `500`: Internal server error.
-
-### Tags
-
-- Configuration
-- Demangling
-- Formatters
-- Formatting
-- Kafka
-- Logger
-- Logging
-- PrintfContext
-- Registry
-- Standard Library
-- Storage
-- TimeFormatting
-
-**Note**: The endpoint `std.shared_ptr_logger_get` (retrieve a logger by name) has been removed as it duplicates the functionality of the Registry endpoint `logger with name`.
+- [spdlog Architecture Overview](ARCHITECTURE.md) - Explains the overall system design, component relationships, and key modules to aid developer understanding and contribution, especially useful given the library's modular structure.
+- [Contributing to spdlog](CONTRIBUTING.md) - Provides guidelines for development, testing, and contribution workflows to encourage community involvement and maintain code quality.
+- [API Documentation](api_documentation.yaml) - Generated API reference file

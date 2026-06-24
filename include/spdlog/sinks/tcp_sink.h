@@ -1,4 +1,4 @@
-// Copyright(c) 2015-present, Gabi Melman & spdlog contributors.
+// Copyright(c) 2015-present, Gabi Melman & spdlog contributors.  // This header file declares the tcp_sink_config struct and tcp_sink class, which are part of spdlog's sink infrastructure for TCP-based log delivery. It includes dependencies such as base_sink for core logger functionality, tcp_client for network communication, and standard libraries for chrono formatting utilities to handle timing in reconnection strategies.
 // Distributed under the MIT License (http://opensource.org/licenses/MIT)
 
 #pragma once
@@ -17,16 +17,16 @@
 #include <mutex>
 #include <string>
 
-// Simple tcp client sink
-// Connects to remote address and send the formatted log.
-// Will attempt to reconnect if connection drops, with exponential backoff to avoid
-// blocking the logging thread on every message when the server is unavailable.
-// If more complicated behaviour is needed (i.e get responses), you can inherit it and override the
-// sink_it_ method.
+/**
+ * This namespace block defines the tcp_sink_config struct and the tcp_sink class template, providing a complete implementation for TCP log sinking. It integrates with spdlog's core logger functionality by extending base_sink, and includes configuration for connection parameters, reconnection backoff using chrono utilities, and log message formatting via the base sink's formatter.
+ */
 
 SPDLOG_NAMESPACE_BEGIN
 namespace sinks {
 
+/**
+ * The tcp_sink_config struct holds configuration parameters for tcp_sink, including server_host and server_port for connection, timeout_ms for socket operations, lazy_connect flag to defer connection to first log call, and reconnection settings with reconnect_delay_ms and max_reconnect_delay_ms. These settings enable controlled reconnection strategies to avoid blocking the logging thread, utilizing chrono formatting utilities for timing management.
+ */
 struct tcp_sink_config {
     std::string server_host;
     int server_port;
@@ -43,6 +43,10 @@ struct tcp_sink_config {
 };
 
 template <typename Mutex>
+
+/**
+ * tcp_sink is a template class inheriting from base_sink that implements a TCP log sink for sending formatted log messages to a remote server. It manages connection state, handles automatic reconnection with exponential backoff using chrono utilities to prevent thread blocking, and integrates with spdlog's logger registration and global configuration for seamless log routing over TCP.
+ */
 class tcp_sink : public sinks::base_sink<Mutex> {
 public:
     // connect to tcp host/port or throw if failed
@@ -60,6 +64,9 @@ public:
         }
     }
 
+    /**
+     * This constructor for tcp_sink accepts a tcp_sink_config and initializes the sink. It optionally establishes an immediate connection to the remote server unless the lazy_connect flag is set, which defers connection to the first log call. This supports benchmarking tools and core infrastructure by allowing flexible initialization patterns for performance testing.
+     */
     explicit tcp_sink(tcp_sink_config sink_config)
         : config_{std::move(sink_config)} {
         if (!config_.lazy_connect) {
@@ -70,6 +77,10 @@ public:
     ~tcp_sink() override = default;
 
 protected:
+
+    /**
+     * The sink_it_ method overrides the base sink's method to format the log message using spdlog's formatter, check the TCP client's connection status, and implement reconnection logic with exponential backoff. It uses chrono formatting utilities to manage timing and ensures non-blocking behavior during server unavailability, which is crucial for maintaining log throughput in core logger functionality.
+     */
     void sink_it_(const details::log_msg &msg) override {
         memory_buf_t formatted;
         sinks::base_sink<Mutex>::formatter_->format(msg, formatted);

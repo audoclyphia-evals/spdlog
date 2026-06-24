@@ -1,4 +1,4 @@
-//
+//  // This file is a comprehensive example source file in spdlog that demonstrates various logging features through stubs for multiple example functions. It includes spdlog headers and <chrono> for chrono formatting utilities, enabling time-based log entries. The file references core logger functionality such as logging levels, sink configurations (including rate limit sinks), and logger registration via spdlog's global registry. It also mentions Mapped Diagnostic Context (MDC) for thread-local diagnostic information, which is part of spdlog's core infrastructure for context-aware logging, though it is conditionally supported based on TLS availability.
 // Copyright(c) 2015 Gabi Melman.
 // Distributed under the MIT License (http://opensource.org/licenses/MIT)
 
@@ -29,9 +29,9 @@ void replace_default_logger_example();
 void mdc_example();
 void rate_limit_example();
 
-#include "spdlog/spdlog.h"
-#include "spdlog/cfg/env.h"   // support for loading levels from the environment variable
-#include "spdlog/fmt/ostr.h"  // support for user defined types
+/**
+ * The main function serves as the entry point for demonstrating spdlog's logging capabilities. It initializes spdlog and calls example functions to showcase core logger functionality like formatted logging with chrono formatting utilities (e.g., timestamp support), logging level loading from environment variables, and logger registration and global configuration through spdlog's API. The function also illustrates asynchronous logging, sink creation, and shutdown procedures, highlighting spdlog's core infrastructure for robust logging systems.
+ */
 
 int main(int, char *[]) {
     try {
@@ -201,7 +201,9 @@ void binary_example() {
     // logger->info("hexdump style: {:a}", spdlog::to_hex(buf));
     // logger->info("hexdump style, 20 chars per line {:a}", spdlog::to_hex(buf, 20));
 }
-#else
+/**
+ * This stub function is intended to demonstrate binary logging in spdlog, but binary logging is not currently supported with std::format. It indicates a gap in spdlog's functionality and may be part of future enhancements to core logger functionality for handling binary data formats.
+ */
 void binary_example() {
     // not supported with std::format yet
 }
@@ -215,7 +217,9 @@ void vector_example() {
     spdlog::info("Vector example: {}", vec);
 }
 
-#else
+/**
+ * An empty stub reserved for examples on logging container types such as vectors. While currently unimplemented, it may be used to illustrate vector formatting utilities within spdlog's core infrastructure, showcasing support for logging standard container types.
+ */
 void vector_example() {}
 #endif
 
@@ -396,7 +400,9 @@ void mdc_example() {
     spdlog::set_pattern("[%H:%M:%S %z] [%^%L%$] [%&] %v");
     spdlog::info("Some log message with context");
 }
-#else
+/**
+ * Stubbed example function for demonstrating Mapped Diagnostic Context (MDC) logging in spdlog, which remains inactive when Thread-Local Storage (TLS) support is disabled.
+ */
 void mdc_example() {
     // if TLS feature is disabled
 }

@@ -13,13 +13,18 @@
 #include <mutex>
 #include <vector>
 
-// Distribution sink (mux). Stores a vector of sinks which get called when log
-// is called
+/**
+ * Namespace block encapsulating the dist_sink class implementation within spdlog's sink infrastructure. It defines the template class for log message distribution and provides type aliases for thread-safe (dist_sink_mt) and non-thread-safe (dist_sink_st) configurations, integrating with the core logger functionality for multi-sink routing.
+ */
 
 SPDLOG_NAMESPACE_BEGIN
 namespace sinks {
 
 template <typename Mutex>
+
+/**
+ * dist_sink is a template class inheriting from base_sink that enables distribution of log messages to multiple sub-sinks. It includes methods for adding, removing, and setting sinks dynamically, overrides base methods for pattern and formatter propagation, and ensures synchronized access via the Mutex parameter, supporting core logger registration and global configuration in spdlog's architecture.
+ */
 class dist_sink : public base_sink<Mutex> {
 public:
     dist_sink() = default;
